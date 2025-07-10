@@ -27,6 +27,10 @@ on:
         description: 'The AWS region to connect to'
         required: true
         type: string
+      build_args:
+        description: 'A multi-line string of build arguments for the docker build command'
+        required: false
+        type: string
     # SECRETS: Sensitive information that must be passed by the calling workflow.
     secrets:
       aws_access_key_id:
@@ -85,6 +89,7 @@ jobs:
           build-args: |
             GITHUB_TOKEN=${{ secrets.github_package_token }}
             GITHUB_ACTOR=${{ github.actor }}
+            ${{ inputs.build_args }}
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr_repository}}:${{ inputs.image_tag }}
 

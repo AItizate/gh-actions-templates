@@ -41,6 +41,7 @@ This workflow builds a Docker image from a specified Dockerfile and pushes it to
 | `image_tag`      | string | `true`   | `testing`            | The tag for the Docker image (e.g., `latest`, `v1.0.0`).                 |
 | `docker_file`    | string | `true`   | `./docker/Dockerfile` | The path to the Dockerfile.                                              |
 | `aws_region`     | string | `true`   |                      | The AWS region where the ECR repository is located.                      |
+| `build_args`     | string | `false`  |                      | A multi-line string of build arguments for the docker build command.   |
 
 #### Secrets
 
@@ -80,6 +81,9 @@ jobs:
       image_tag: ${{ github.sha }}
       docker_file: './Dockerfile'
       aws_region: 'us-east-1'
+      build_args: |
+        VERSION=1.2.3
+        BUILD_DATE=${{ github.run_id }}
     secrets:
       aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
       aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -103,6 +107,7 @@ This workflow builds a Docker image and pushes it to a generic, non-AWS private 
 | `repository_name` | string | `true`   |                      | The name of the repository to push to (e.g., `my-app/my-service`).     |
 | `image_tag`       | string | `true`   | `testing`            | The tag for the Docker image (e.g., `latest`, `v1.0.0`).                 |
 | `docker_file`     | string | `true`   | `./docker/Dockerfile` | The path to the Dockerfile.                                              |
+| `build_args`      | string | `false`  |                      | A multi-line string of build arguments for the docker build command.   |
 
 #### Secrets
 
@@ -140,6 +145,8 @@ jobs:
       repository_name: 'my-app/my-service'
       image_tag: ${{ github.sha }}
       docker_file: './Dockerfile'
+      build_args: |
+        RELEASE_VERSION=${{ github.ref_name }}
     secrets:
       registry_username: ${{ secrets.REGISTRY_USERNAME }}
       registry_password: ${{ secrets.REGISTRY_PASSWORD }}

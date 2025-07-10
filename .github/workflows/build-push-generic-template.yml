@@ -27,6 +27,10 @@ on:
         required: true
         type: string
         default: ./docker/Dockerfile
+      build_args:
+        description: 'A multi-line string of build arguments for the docker build command'
+        required: false
+        type: string
     # SECRETS: Sensitive information that must be passed by the calling workflow.
     secrets:
       registry_username:
@@ -76,6 +80,7 @@ jobs:
           build-args: |
             GITHUB_TOKEN=${{ secrets.github_package_token }}
             GITHUB_ACTOR=${{ github.actor }}
+            ${{ inputs.build_args }}
           tags: |
             ${{ inputs.registry_url }}/${{ inputs.repository_name }}:${{ inputs.image_tag }}
 
