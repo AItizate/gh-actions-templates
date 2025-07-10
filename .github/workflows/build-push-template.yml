@@ -1,0 +1,96 @@
+name: Reusable - Build & Push Docker Image
+
+on:
+  # This workflow is designed to be called by other workflows.
+  workflow_call:
+    # INPUTS: Parameters that must be passed by the calling workflow.
+    inputs:
+      branch:
+        description: 'The branch to check out'
+        required: true
+        type: string
+      ecr_repository:
+        description: 'The ECR repository to push the image to (e.g., my-app/my-service)'
+        required: true
+        type: string
+      image_tag:
+        description: 'The tag for the Docker image (e.g., latest, v1.0.0)'
+        required: true
+        type: string
+        default: testing
+      docker_file:
+        description: 'The path to the Dockerfile'
+        required: true
+        type: string
+        default: ./docker/Dockerfile
+      aws_region:
+        description: 'The AWS region to connect to'
+        required: true
+        type: string
+    # SECRETS: Sensitive information that must be passed by the calling workflow.
+    secrets:
+      aws_access_key_id:
+        description: 'AWS access key ID for ECR login'
+        required: true
+      aws_secret_access_key:
+        description: 'AWS secret access key for ECR login'
+        required: true
+      github_package_token:
+        description: 'GitHub token with packages:read permission for private repositories'
+        required: true
+    # OUTPUTS: Values that will be returned to the calling workflow.
+    outputs:
+      docker_registry:
+        description: "The full Docker registry and repository path"
+        value: ${{ jobs.build.outputs.docker_registry }}
+      docker_image_tag:
+        description: "The Docker image tag used"
+        value: ${{ jobs.build.outputs.docker_image_tag }}
+
+jobs:
+  build:
+    name: Build and Push Docker Image to ECR
+    runs-on: ubuntu-latest
+    outputs:
+      docker_registry: ${{ steps.set-outputs.outputs.docker_registry }}
+      docker_image_tag: ${{ steps.set-outputs.outputs.docker_image_tag }}
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0 # Fetch all history for all branches and tags
+
+      # Step 2: Configure AWS credentials to allow logging into ECR.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          aws-access-key-id: ${{ secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
+
+      # Step 3: Log in to Amazon ECR.
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Step 4: Build the Docker image and push it to the specified ECR repository.
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ inputs.docker_file }}
+          push: true
+          build-args: |
+            GITHUB_TOKEN=${{ secrets.github_package_token }}
+            GITHUB_ACTOR=${{ github.actor }}
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr_repository}}:${{ inputs.image_tag }}
+
+      # Step 5: Set the outputs for the calling workflow.
+      - name: Set outputs
+        id: set-outputs
+        run: |
+          echo "docker_registry=${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr_repository}}" >> $GITHUB_OUTPUT
+          echo "docker_image_tag=${{ inputs.image_tag }}" >> $GITHUB_OUTPUT

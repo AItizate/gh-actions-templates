@@ -1,0 +1,72 @@
+name: Reusable - Deploy to EKS
+
+on:
+  # This workflow is designed to be called by other workflows.
+  workflow_call:
+    # INPUTS: Parameters that must be passed by the calling workflow.
+    inputs:
+      docker_image:
+        description: 'The full Docker image URI to deploy (e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest)'
+        required: true
+        type: string
+      k8s_cluster_name:
+        description: 'The name of the EKS cluster'
+        required: true
+        type: string
+      k8s_service:
+        description: 'The name of the Kubernetes service/deployment to update'
+        required: false
+        type: string
+        default: data-sync
+      k8s_namespace:
+        description: 'The Kubernetes namespace of the service'
+        required: false
+        type: string
+        default: default
+      k8s_container_name:
+        description: 'The name of the container within the deployment to update'
+        required: false
+        type: string
+        default: data-sync
+      aws_region:
+        description: 'The AWS region where the EKS cluster is located'
+        required: true
+        type: string
+    # SECRETS: Sensitive information that must be passed by the calling workflow.
+    secrets:
+      aws_access_key_id:
+        description: 'AWS access key ID for EKS access'
+        required: true
+      aws_secret_access_key:
+        description: 'AWS secret access key for EKS access'
+        required: true
+
+jobs:
+  deploy:
+    name: Deploy to EKS
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Configure AWS credentials to allow access to EKS.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          aws-access-key-id: ${{ secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
+
+      # Step 2: Update the kubeconfig file to connect to the specified EKS cluster.
+      - name: Update kube config
+        run: aws eks update-kubeconfig --name ${{ inputs.k8s_cluster_name }} --region ${{ inputs.aws_region }}
+
+      # Step 3: Deploy the new Docker image to the EKS cluster.
+      - name: Deploy to EKS
+        env:
+          DOCKER_IMAGE: ${{ inputs.docker_image }}
+          NAMESPACE: ${{ inputs.k8s_namespace }}
+          SERVICE: ${{ inputs.k8s_service }}
+          CONTAINER_NAME: ${{ inputs.k8s_container_name }}
+        run: |
+          # Set the new image for the specified deployment
+          kubectl set image deployment -n $NAMESPACE $SERVICE $CONTAINER_NAME=$DOCKER_IMAGE
+          # Trigger a rollout restart to apply the changes
+          kubectl rollout restart deployment -n $NAMESPACE $SERVICE
