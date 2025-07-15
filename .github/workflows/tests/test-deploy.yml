@@ -1,0 +1,24 @@
+name: Test - Deploy to EKS
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/deploy-template.yml'
+      - '.github/workflows/tests/test-deploy.yml'
+
+jobs:
+  test-deploy:
+    name: Test Deploy Workflow
+    uses: ./.github/workflows/deploy-template.yml
+    with:
+      docker_image: '123456789012.dkr.ecr.us-east-1.amazonaws.com/test-app:latest'
+      k8s_cluster_name: 'test-cluster'
+      k8s_service: 'test-service'
+      k8s_namespace: 'test-namespace'
+      k8s_container_name: 'test-container'
+      aws_region: 'us-east-1'
+      dry_run: true # Run with --dry-run=client
+    secrets:
+      # Dummy secrets are required, but will not be used since dry_run is true
+      aws_access_key_id: 'DUMMY_AWS_ACCESS_KEY_ID'
+      aws_secret_access_key: 'DUMMY_AWS_SECRET_ACCESS_KEY'

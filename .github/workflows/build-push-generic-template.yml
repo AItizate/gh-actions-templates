@@ -31,6 +31,11 @@ on:
         description: 'A multi-line string of build arguments for the docker build command'
         required: false
         type: string
+      push:
+        description: 'Whether to push the image to the registry'
+        required: false
+        type: boolean
+        default: true
     # SECRETS: Sensitive information that must be passed by the calling workflow.
     secrets:
       registry_username:
@@ -76,7 +81,7 @@ jobs:
         with:
           context: .
           file: ${{ inputs.docker_file }}
-          push: true
+          push: ${{ inputs.push }}
           build-args: |
             GITHUB_TOKEN=${{ secrets.github_package_token }}
             GITHUB_ACTOR=${{ github.actor }}

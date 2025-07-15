@@ -1,0 +1,28 @@
+name: Test - Build & Push (Generic)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/build-push-generic-template.yml'
+      - '.github/workflows/tests/test-build-push-generic.yml'
+      - 'tests/Dockerfile'
+
+jobs:
+  test-generic-build:
+    name: Test Generic Build Workflow
+    uses: ./.github/workflows/build-push-generic-template.yml
+    with:
+      branch: ${{ github.head_ref }}
+      registry_url: 'docker.io' # Using Docker Hub as a dummy registry
+      repository_name: 'test-user/test-repo'
+      image_tag: 'test-tag'
+      docker_file: 'tests/Dockerfile'
+      push: false # Do not push the image
+      build_args: |
+        ARG1=value1
+        ARG2=value2
+    secrets:
+      # Dummy secrets are required, but will not be used since push is false
+      registry_username: 'DUMMY_USERNAME'
+      registry_password: 'DUMMY_PASSWORD'
+      github_package_token: ${{ secrets.GITHUB_TOKEN }}

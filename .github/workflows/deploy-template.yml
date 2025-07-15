@@ -32,6 +32,11 @@ on:
         description: 'The AWS region where the EKS cluster is located'
         required: true
         type: string
+      dry_run:
+        description: 'Whether to run kubectl commands with --dry-run=client'
+        required: false
+        type: boolean
+        default: false
     # SECRETS: Sensitive information that must be passed by the calling workflow.
     secrets:
       aws_access_key_id:
@@ -66,7 +71,13 @@ jobs:
           SERVICE: ${{ inputs.k8s_service }}
           CONTAINER_NAME: ${{ inputs.k8s_container_name }}
         run: |
+          # Add --dry-run flag if enabled
+          DRY_RUN_FLAG=""
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            DRY_RUN_FLAG="--dry-run=client"
+          fi
+
           # Set the new image for the specified deployment
-          kubectl set image deployment -n $NAMESPACE $SERVICE $CONTAINER_NAME=$DOCKER_IMAGE
+          kubectl set image deployment -n $NAMESPACE $SERVICE $CONTAINER_NAME=$DOCKER_IMAGE $DRY_RUN_FLAG
           # Trigger a rollout restart to apply the changes
-          kubectl rollout restart deployment -n $NAMESPACE $SERVICE
+          kubectl rollout restart deployment -n $NAMESPACE $SERVICE $DRY_RUN_FLAG
