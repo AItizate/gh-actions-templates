@@ -1,0 +1,61 @@
+name: Reusable - Webhook Notification
+
+# Post a JSON message to an arbitrary webhook URL. Designed for failure
+# notifications (call from a job that depends on others with
+# `if: always() && failure()`), but works for any event.
+#
+# The payload uses the {"text": "..."} shape that Slack-compatible
+# webhooks (including Discord, Mattermost, and Google Chat with the
+# right config) accept.
+on:
+  workflow_call:
+    inputs:
+      repository:
+        description: 'Repository slug, typically ${{ github.repository }}'
+        required: true
+        type: string
+      ref:
+        description: 'Branch or ref that triggered the workflow'
+        required: true
+        type: string
+      run_id:
+        description: 'GitHub Actions run ID, typically ${{ github.run_id }}'
+        required: true
+        type: string
+      server_url:
+        description: 'GitHub server URL, typically ${{ github.server_url }}'
+        required: true
+        type: string
+      message:
+        description: 'Override the default failure message'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      NOTIFY_WEBHOOK_URL:
+        description: 'Slack-compatible webhook URL (Slack, Discord, Mattermost, etc.)'
+        required: true
+
+jobs:
+  notify:
+    name: Notify webhook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build payload
+        id: payload
+        run: |
+          if [ -n "${{ inputs.message }}" ]; then
+            MSG="${{ inputs.message }}"
+          else
+            MSG="Workflow failed in ${{ inputs.repository }} on branch ${{ inputs.ref }}. See details: ${{ inputs.server_url }}/${{ inputs.repository }}/actions/runs/${{ inputs.run_id }}"
+          fi
+          # JSON-encode the message safely (handles quotes, newlines, etc.)
+          ESCAPED=$(jq -Rs . <<< "$MSG")
+          echo "payload={\"text\": $ESCAPED}" >> "$GITHUB_OUTPUT"
+
+      - name: POST to webhook
+        run: |
+          curl -sS -X POST \
+            -H 'Content-type: application/json' \
+            --data '${{ steps.payload.outputs.payload }}' \
+            '${{ secrets.NOTIFY_WEBHOOK_URL }}'

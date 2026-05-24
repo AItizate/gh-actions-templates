@@ -1,0 +1,133 @@
+name: Reusable - PR Validation (Conventional Commits)
+
+# Validate that the PR title and every commit message in the PR follow the
+# Conventional Commits spec. Posts a sticky comment on the PR with the
+# verdict. Optionally fails the workflow if validation fails.
+#
+# Suggested trigger in the calling repo:
+#   on:
+#     pull_request:
+#       types: [opened, edited, synchronize, reopened]
+on:
+  workflow_call:
+    inputs:
+      require_conventional_commits:
+        description: 'Fail the workflow if commits or PR title do not match Conventional Commits'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  validate-conventional-commits:
+    name: Validate Conventional Commits
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Validate PR title and commit messages
+        id: validate
+        run: |
+          PATTERN='^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?!?: .+'
+
+          # --- PR title ---
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          if echo "$PR_TITLE" | grep -qE "$PATTERN"; then
+            echo "title_valid=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "title_valid=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # --- Commit messages on this branch ---
+          git fetch origin "${{ github.base_ref }}"
+          COMMITS=$(git log "origin/${{ github.base_ref }}..HEAD" --format=%s)
+
+          TOTAL=0
+          VALID=0
+          INVALID=""
+          while IFS= read -r commit; do
+            if [ -n "$commit" ]; then
+              TOTAL=$((TOTAL + 1))
+              if echo "$commit" | grep -qE "$PATTERN"; then
+                VALID=$((VALID + 1))
+              else
+                INVALID="$INVALID\n- \`$commit\`"
+              fi
+            fi
+          done <<< "$COMMITS"
+
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "valid=$VALID" >> "$GITHUB_OUTPUT"
+          if [ "$VALID" -eq "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
+            echo "commits_valid=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "commits_valid=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "invalid_commits<<EOF"
+              echo -e "$INVALID"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post or update sticky comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const titleValid = '${{ steps.validate.outputs.title_valid }}' === 'true';
+            const commitsValid = '${{ steps.validate.outputs.commits_valid }}' === 'true';
+            const total = '${{ steps.validate.outputs.total }}';
+            const valid = '${{ steps.validate.outputs.valid }}';
+
+            let body = '## Conventional Commits Validation\n\n';
+            body += `**PR Title:** ${titleValid ? '✅' : '❌'} \`${{ github.event.pull_request.title }}\`\n`;
+            body += `**Commits:** ${commitsValid ? '✅' : '❌'} ${valid}/${total} valid\n`;
+
+            if (!titleValid || !commitsValid) {
+              body += '\n<details>\n<summary>Expected format</summary>\n\n';
+              body += '```\n<type>(<scope>): <description>\n```\n\n';
+              body += 'Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `ci`, `build`, `revert`\n\n';
+              body += 'Examples:\n';
+              body += '- `feat(api): add notebook endpoint`\n';
+              body += '- `fix(auth): handle session refresh`\n';
+              body += '- `docs: update README`\n';
+              body += '</details>\n';
+            }
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Conventional Commits Validation')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+      - name: Fail if required
+        if: inputs.require_conventional_commits && (steps.validate.outputs.title_valid != 'true' || steps.validate.outputs.commits_valid != 'true')
+        run: |
+          echo "::error::Conventional Commits validation failed."
+          exit 1

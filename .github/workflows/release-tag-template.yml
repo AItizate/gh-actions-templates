@@ -1,0 +1,65 @@
+name: Reusable - Create Release Tag
+
+# Create a Git tag and a GitHub Release with auto-generated notes.
+# Common usage: trigger on push to main when a version file (package.json
+# or pyproject.toml) changes, parse the version, and call this template.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Semantic version to tag (e.g., 1.2.3). The "v" prefix is added automatically.'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark this release as a prerelease'
+        required: false
+        type: boolean
+        default: false
+      target_commitish:
+        description: 'Commit SHA or branch to tag (defaults to the workflow''s commit)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  release:
+    name: Create tag and release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate version format (semver)
+        run: |
+          if ! echo "${{ inputs.version }}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+            echo "::error::Invalid version format: '${{ inputs.version }}'. Expected semver (e.g., 1.2.3 or 1.2.3-rc.1)"
+            exit 1
+          fi
+
+      - name: Check tag does not already exist
+        run: |
+          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "::error::Tag v${{ inputs.version }} already exists"
+            exit 1
+          fi
+
+      - name: Create tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ARGS=(
+            "v${{ inputs.version }}"
+            --title "v${{ inputs.version }}"
+            --generate-notes
+          )
+          if [ -n "${{ inputs.target_commitish }}" ]; then
+            ARGS+=(--target "${{ inputs.target_commitish }}")
+          fi
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            ARGS+=(--prerelease)
+          fi
+          gh release create "${ARGS[@]}"

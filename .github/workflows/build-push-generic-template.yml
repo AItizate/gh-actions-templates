@@ -1,9 +1,15 @@
-name: Reusable - Build & Push Docker Image (Generic)
+name: Reusable - Build, Scan & Push Docker Image (Generic)
 
+# Build a Docker image, scan it with Trivy, and push it to a generic
+# Docker registry. The scan runs BEFORE the push, so vulnerable images
+# never land in the registry.
+#
+# Backward-compatible with v1.0:
+#   - All existing inputs/secrets/outputs are preserved.
+#   - New inputs (push_image, trivy_severity, trivy_exit_code) have
+#     defaults that match v1.0 behaviour (push=true, fail on CRITICAL/HIGH).
 on:
-  # This workflow is designed to be called by other workflows.
   workflow_call:
-    # INPUTS: Parameters that must be passed by the calling workflow.
     inputs:
       branch:
         description: 'The branch to check out'
@@ -31,7 +37,27 @@ on:
         description: 'A multi-line string of build arguments for the docker build command'
         required: false
         type: string
-    # SECRETS: Sensitive information that must be passed by the calling workflow.
+      # --- New in v1.1 ---
+      push_image:
+        description: 'Push the image after a successful scan (set false to build + scan only)'
+        required: false
+        type: boolean
+        default: true
+      trivy_severity:
+        description: 'Comma-separated Trivy severities that cause the workflow to fail (UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL)'
+        required: false
+        type: string
+        default: 'CRITICAL,HIGH'
+      trivy_exit_code:
+        description: 'Trivy exit code on matching severity. Set to 0 to scan in advisory-only mode (warn but do not fail).'
+        required: false
+        type: string
+        default: '1'
+      trivy_ignore_unfixed:
+        description: 'Ignore vulnerabilities that have no fixed version yet'
+        required: false
+        type: boolean
+        default: true
     secrets:
       registry_username:
         description: 'Username for the private Docker registry'
@@ -42,50 +68,66 @@ on:
       github_package_token:
         description: 'GitHub token with packages:read permission for private repositories'
         required: false
-    # OUTPUTS: Values that will be returned to the calling workflow.
     outputs:
       docker_image_uri:
-        description: "The full Docker image URI"
-        value: ${{ jobs.build.outputs.docker_image_uri }}
+        description: 'The full Docker image URI'
+        value: ${{ jobs.build-scan-push.outputs.docker_image_uri }}
 
 jobs:
-  build:
-    name: Build and Push Docker Image to Generic Registry
+  build-scan-push:
+    name: Build, Scan and Push Docker Image
     runs-on: ubuntu-latest
     outputs:
       docker_image_uri: ${{ steps.set-outputs.outputs.docker_image_uri }}
     steps:
-      # Step 1: Check out the repository code
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ inputs.branch }}
-          fetch-depth: 0 # Fetch all history for all branches and tags
+          fetch-depth: 0
 
-      # Step 2: Log in to the generic private registry
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Define image URI
+        id: image-def
+        run: echo "IMAGE_URI=${{ inputs.registry_url }}/${{ inputs.repository_name }}:${{ inputs.image_tag }}" >> "$GITHUB_ENV"
+
+      - name: Build Docker image (load locally; push happens after scan)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ inputs.docker_file }}
+          push: false
+          load: true
+          tags: ${{ env.IMAGE_URI }}
+          build-args: |
+            GITHUB_TOKEN=${{ secrets.github_package_token }}
+            GITHUB_ACTOR=${{ github.actor }}
+            ${{ inputs.build_args }}
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_URI }}
+          format: 'table'
+          exit-code: ${{ inputs.trivy_exit_code }}
+          ignore-unfixed: ${{ inputs.trivy_ignore_unfixed }}
+          vuln-type: 'os,library'
+          severity: ${{ inputs.trivy_severity }}
+
       - name: Login to Docker Registry
-        uses: docker/login-action@v2
+        if: inputs.push_image
+        uses: docker/login-action@v3
         with:
           registry: ${{ inputs.registry_url }}
           username: ${{ secrets.registry_username }}
           password: ${{ secrets.registry_password }}
 
-      # Step 3: Build the Docker image and push it to the specified repository.
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ${{ inputs.docker_file }}
-          push: true
-          build-args: |
-            GITHUB_TOKEN=${{ secrets.github_package_token }}
-            GITHUB_ACTOR=${{ github.actor }}
-            ${{ inputs.build_args }}
-          tags: |
-            ${{ inputs.registry_url }}/${{ inputs.repository_name }}:${{ inputs.image_tag }}
+      - name: Push Docker image
+        if: inputs.push_image
+        run: docker push "${{ env.IMAGE_URI }}"
 
-      # Step 4: Set the outputs for the calling workflow.
       - name: Set outputs
         id: set-outputs
-        run: |
-          echo "docker_image_uri=${{ inputs.registry_url }}/${{ inputs.repository_name }}:${{ inputs.image_tag }}" >> $GITHUB_OUTPUT
+        run: echo "docker_image_uri=${{ env.IMAGE_URI }}" >> "$GITHUB_OUTPUT"
