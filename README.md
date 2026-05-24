@@ -44,12 +44,15 @@ jobs:
 
 | Template | Use it for | Source |
 |----------|------------|--------|
+| `build-push-generic-template.yml` | Build + **Trivy scan** + push to any generic Docker registry (since v1.1) | [.yml](.github/workflows/build-push-generic-template.yml) |
 | `build-push-template.yml` | Build + push to AWS ECR | [.yml](.github/workflows/build-push-template.yml) |
 | `build-push-ecr-template.yml` | Build + push to AWS ECR (alternate IAM flow) | [.yml](.github/workflows/build-push-ecr-template.yml) |
-| `build-push-generic-template.yml` | Build + push to any generic Docker registry | [.yml](.github/workflows/build-push-generic-template.yml) |
+| `pr-validation-template.yml` | Conventional Commits validation on PRs (sticky comment + optional blocking) (since v1.1) | [.yml](.github/workflows/pr-validation-template.yml) |
+| `release-tag-template.yml` | Create a Git tag + GitHub Release with auto-generated notes (since v1.1) | [.yml](.github/workflows/release-tag-template.yml) |
+| `webhook-notification-template.yml` | Post a Slack-compatible JSON payload to any webhook URL (since v1.1) | [.yml](.github/workflows/webhook-notification-template.yml) |
 | `deploy-template.yml` | `kubectl set image` on EKS (legacy — prefer GitOps) | [.yml](.github/workflows/deploy-template.yml) |
 
-> **Heads up:** versions newer than v1.0 will add Trivy scanning to the `generic` build template plus a PR-validation template, a release-tag template, and a webhook-notification template. See the [CHANGELOG](CHANGELOG.md) for what's released and what's in progress.
+See the [CHANGELOG](CHANGELOG.md) for what's in each release and what's in progress.
 
 ## Conventions
 
