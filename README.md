@@ -11,6 +11,32 @@ A small, opinionated library of workflow templates that solve the recurring CI/C
 
 If every team writes their own `build → push → deploy` workflow, every team accumulates the same drift: missed security scans, inconsistent tags, half-rotated secrets, divergent failure handling. These templates are the version we keep current so individual repos don't have to.
 
+## The full picture
+
+Four diagrams explain where these templates fit in the overall lifecycle: the CI pipeline, the GitOps loop (single-cluster + multi-cluster variants), and the DevSecOps gates that cross all of them.
+
+### CI pipeline — from commit to registry
+
+![CI pipeline](docs/assets/architecture/ci-pipeline.png)
+
+A developer pushes; the pipeline validates, builds, **scans with Trivy**, pushes, and tags. Templates from this repo handle each step. The dashed "coming soon" strip flags where AI agents will plug in next.
+
+### GitOps loop
+
+![GitOps loop — single cluster](docs/assets/architecture/gitops-loop-single-cluster.png)
+
+The conceptual single-cluster shape: image lands in registry → IAC repo bumps the tag → ArgoCD reconciles → cluster runs the new SHA. Git is the source of truth; nobody writes to the cluster directly.
+
+![GitOps loop — multi cluster](docs/assets/architecture/gitops-loop-multi-cluster.png)
+
+The same pattern at scale: one IAC repo with `dev/`, `staging/`, `prod/` overlays (or one per tenant), one ArgoCD `ApplicationSet`, N target clusters. Promotion and tenant isolation use the exact same machinery.
+
+### DevSecOps gates
+
+![DevSecOps gates](docs/assets/architecture/devsecops-gates.png)
+
+Where each security control lives across the lifecycle: DEV → CI → REGISTRY → IAC → CLUSTER → OPS. **Magenta-bordered chips are already shipped today** by `AItizate/gh-actions-templates` or [`AItizate/forjate`](https://github.com/AItizate/forjate); the rest are recommendations you'd compose on top.
+
 ## How to use
 
 Pin to a **major tag** (recommended) so chart updates here don't surprise your CI:
